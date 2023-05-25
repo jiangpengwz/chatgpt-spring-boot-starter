@@ -94,7 +94,7 @@ public class DefaultOpenAiClient implements OpenAiClient {
     @Override
     public void streamCompletions(CompletionRequest request, EventSourceListener listener) {
         request.setStream(true);
-        Request clientRequest = createRequest(COMPLETIONS, createRequestBody(request));
+        Request clientRequest = createRequest(COMPLETIONS, createRequestBody(request), request.getUser());
         RealEventSource realEventSource = new RealEventSource(clientRequest, listener);
         realEventSource.connect(okHttpClient);
     }
@@ -106,13 +106,13 @@ public class DefaultOpenAiClient implements OpenAiClient {
 
     @Override
     public ChatCompletionResponse chatCompletions(ChatCompletionRequest request) {
-        return execute(CHAT_COMPLETIONS, createRequestBody(request), ChatCompletionResponse.class);
+        return execute(CHAT_COMPLETIONS, createRequestBody(request), request.getUser(), ChatCompletionResponse.class);
     }
 
     @Override
     public void streamChatCompletions(ChatCompletionRequest request, EventSourceListener listener) {
         request.setStream(true);
-        Request clientRequest = createRequest(CHAT_COMPLETIONS, createRequestBody(request));
+        Request clientRequest = createRequest(CHAT_COMPLETIONS, createRequestBody(request), request.getUser());
         RealEventSource realEventSource = new RealEventSource(clientRequest, listener);
         realEventSource.connect(okHttpClient);
     }
@@ -263,8 +263,9 @@ public class DefaultOpenAiClient implements OpenAiClient {
     }
 
     @SneakyThrows
-    private <S> S execute(OpenAiUrl openAiUrl, RequestBody requestBody, Class<S> responseType, Object... uriVariables) {
-        Request clientRequest = createRequest(openAiUrl, requestBody, uriVariables);
+    private <S> S execute(
+            OpenAiUrl openAiUrl, RequestBody requestBody, String user, Class<S> responseType, Object... uriVariables) {
+        Request clientRequest = createRequest(openAiUrl, requestBody, user, uriVariables);
         @Cleanup Response response = okHttpClient.newCall(clientRequest).execute();
 
         ResponseBody body = response.body();
@@ -289,7 +290,12 @@ public class DefaultOpenAiClient implements OpenAiClient {
         return JsonUtils.parse(responseBody, responseType);
     }
 
-    private Request createRequest(OpenAiUrl openAiUrl, RequestBody requestBody, Object... uriVariables) {
+    @SneakyThrows
+    private <S> S execute(OpenAiUrl openAiUrl, RequestBody requestBody, Class<S> responseType, Object... uriVariables) {
+        return execute(openAiUrl, requestBody, null, responseType, uriVariables);
+    }
+
+    private Request createRequest(OpenAiUrl openAiUrl, RequestBody requestBody, String user, Object... uriVariables) {
         Map<OpenAiUrl, String> configUrls = openAiProperties.getUrls();
         String requestUrl = configUrls.get(openAiUrl);
         if (!StringUtils.hasText(requestUrl)) {
@@ -298,9 +304,26 @@ public class DefaultOpenAiClient implements OpenAiClient {
         URI requestURI = uriTemplateHandler.expand(requestUrl, uriVariables);
         return new Request.Builder()
                 .url(Objects.requireNonNull(HttpUrl.get(requestURI)))
-                .header(Header.AUTHORIZATION.name(), BEARER.concat(apiKeyWeightRandom.next()))
+                .header(Header.AUTHORIZATION.name(), BEARER.concat(getKey(user)))
                 .method(openAiUrl.getMethod(), requestBody)
                 .build();
+    }
+
+    /**
+     * 如果有用户专属key，则用专属key，暂时不做random
+     * 没有的话，用random。random的keys不包括用户专属key。
+     * @param user
+     * @return
+     */
+    private String getKey(String user) {
+        if (user != null) {
+            for (OpenAiKeyWeight key : openAiProperties.getKeys()) {
+                if (key.matchKey(user)) {
+                    return key.getKey();
+                }
+            }
+        }
+        return apiKeyWeightRandom.next();
     }
 
     private RequestBody createRequestBody(Object request) {

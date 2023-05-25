@@ -16,6 +16,8 @@
 
 package com.lzhpo.chatgpt;
 
+import java.util.Collections;
+import java.util.List;
 import lombok.Data;
 
 /**
@@ -31,6 +33,7 @@ public class OpenAiKeyWeight {
 
     /**
      * This api key weight.
+     * -1 表示不参与权重
      */
     private double weight;
 
@@ -38,4 +41,20 @@ public class OpenAiKeyWeight {
      * Whether enable this api key.
      */
     private boolean enabled = true;
+
+    /**
+     * 哪些用户可用这个key。不设置、为空表示均可用。
+     */
+    private List<String> users = Collections.emptyList();
+
+    public boolean matchKey(String user) {
+        return users.contains(user);
+    }
+
+    /**
+     * 不参与权重轮训
+     */
+    public boolean noWeight() {
+        return weight == -1;
+    }
 }

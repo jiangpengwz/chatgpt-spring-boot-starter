@@ -68,7 +68,7 @@ public class OpenAiAutoConfiguration {
     @Bean
     public WeightRandom<String> apiKeyWeightRandom(OpenAiProperties openAiProperties) {
         Set<WeightRandom.WeightObj<String>> weightObjSet = openAiProperties.getKeys().stream()
-                .filter(OpenAiKeyWeight::isEnabled)
+                .filter(t -> t.isEnabled() && !t.noWeight())
                 .map(obj -> new WeightRandom.WeightObj<>(obj.getKey(), obj.getWeight()))
                 .collect(Collectors.toSet());
         return new WeightRandom<>(weightObjSet);
